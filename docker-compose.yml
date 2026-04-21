@@ -1,37 +1,20 @@
-# ============================================================
-# docker-compose.yml — Tesis: Sistema RAG con Avatar 3D
-# ============================================================
-# Orquesta: PostgreSQL, Qdrant, Redis, vLLM (GPU), 
-#           FastAPI (backend), Vue3/Nginx (frontend),
-#           Prometheus, Grafana
-#
-# REQUISITOS EN LA MÁQUINA:
-#   - Docker + Docker Compose v2
-#   - NVIDIA Driver >= 525
-#   - NVIDIA Container Toolkit (nvidia-docker2)
-#   - GPU NVIDIA (al menos 4GB VRAM para vLLM)
-# ============================================================
-
 version: "3.9"
 
-# ── Red interna ──────────────────────────────────────────────
 networks:
   tesis-net:
     driver: bridge
 
-# ── Volúmenes persistentes ───────────────────────────────────
 volumes:
-  postgres_data:        # Base de datos PostgreSQL
-  qdrant_storage:       # Vectores de Qdrant
-  redis_data:           # Caché Redis
-  hf_models_cache:      # Modelos de HuggingFace (Qwen AWQ + embeddings)
-  documents_local:      # Documentos subidos por el usuario
-  prometheus_data:      # Métricas de Prometheus
-  grafana_data:         # Dashboards de Grafana
+  postgres_data:     
+  qdrant_storage:     
+  redis_data:         
+  hf_models_cache:    
+  documents_local:   
+  prometheus_data:    
+  grafana_data:        
 
 services:
 
-  # ── 1. PostgreSQL ─────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
     container_name: tesis-postgres
@@ -44,40 +27,33 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"   # Solo exponer si necesitas acceder con pgAdmin desde el host
+      - "5433:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # ── 2. Qdrant (vector store) ──────────────────────────────
   qdrant:
     image: qdrant/qdrant:latest
     container_name: tesis-qdrant
     restart: unless-stopped
     networks: [tesis-net]
     ports:
-      - "6333:6333"   # REST API
-      - "6334:6334"   # gRPC
+      - "6334:6333"   # REST API
+      - "6335:6334"   # gRPC
     volumes:
       - qdrant_storage:/qdrant/storage
     environment:
       QDRANT__SERVICE__GRPC_PORT: "6334"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
 
-  # ── 3. Redis (caché / sesiones) ───────────────────────────
   redis:
     image: redis:7-alpine
     container_name: tesis-redis
     restart: unless-stopped
     networks: [tesis-net]
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
@@ -87,8 +63,6 @@ services:
       timeout: 3s
       retries: 5
 
-  # ── 4. vLLM (modelo local Qwen con GPU) ──────────────────
-  # IMPORTANTE: Requiere NVIDIA Container Toolkit en el host
   vllm:
     image: vllm/vllm-openai:latest
     container_name: tesis-vllm
@@ -97,11 +71,9 @@ services:
     ports:
       - "8001:8001"
     volumes:
-      # Montamos el caché de HuggingFace del HOST para no re-descargar el modelo
-      # La primera vez que se levanta, descarga el modelo (~2GB)
       - hf_models_cache:/root/.cache/huggingface
     environment:
-      TRANSFORMERS_OFFLINE: "0"     # "1" si el modelo ya está descargado
+      TRANSFORMERS_OFFLINE: "0" 
       HF_DATASETS_OFFLINE: "0"
       PYTORCH_ALLOC_CONF: "expandable_segments:True"
     deploy:
@@ -112,8 +84,7 @@ services:
               count: 1              # Usar 1 GPU
               capabilities: [gpu]
     command: >
-      python -m vllm.entrypoints.openai.api_server
-        --model Qwen/Qwen2.5-3B-Instruct-AWQ
+      vllm serve Qwen/Qwen2.5-3B-Instruct-AWQ
         --served-model-name llama3-local
         --port 8001
         --host 0.0.0.0
@@ -121,10 +92,7 @@ services:
         --max-model-len 4096
         --gpu-memory-utilization 0.90
         --enforce-eager
-    # El backend espera a que vLLM esté listo
-    # (no tiene healthcheck oficial, el backend reintenta)
-    
-  # ── 5. Backend FastAPI ────────────────────────────────────
+
   backend:
     build:
       context: ./Proyecto-tesis-backend
@@ -135,7 +103,6 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      # Montar código fuente para desarrollo con hot-reload
       - ./Proyecto-tesis-backend:/app
       - documents_local:/app/documents_local
     env_file:
@@ -144,7 +111,7 @@ services:
       postgres:
         condition: service_healthy
       qdrant:
-        condition: service_healthy
+        condition: service_started
       redis:
         condition: service_healthy
     healthcheck:
@@ -153,24 +120,20 @@ services:
       timeout: 5s
       retries: 5
 
-  # ── 6. Frontend Vue 3 / Nginx ────────────────────────────
   frontend:
     build:
       context: ./Proyecto-tesis-Frontend
       dockerfile: Dockerfile.frontend
       args:
-        # URL del backend accesible desde el NAVEGADOR del usuario
-        # En LAN: usa la IP de la máquina que corre Docker
         VITE_BACKEND_URL: ${VITE_BACKEND_URL:-http://localhost:8000}
     container_name: tesis-frontend
     restart: unless-stopped
     networks: [tesis-net]
     ports:
-      - "5173:80"     # Nginx en 80 expuesto como 5173 (compatible con tu configuración actual)
+      - "5173:80"   
     depends_on:
       - backend
 
-  # ── 7. Prometheus (métricas) ──────────────────────────────
   prometheus:
     image: prom/prometheus:latest
     container_name: tesis-prometheus
@@ -184,7 +147,6 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
-  # ── 8. Grafana (dashboards) ───────────────────────────────
   grafana:
     image: grafana/grafana:latest
     container_name: tesis-grafana
