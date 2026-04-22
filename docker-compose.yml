@@ -84,7 +84,7 @@ services:
               count: 1              # Usar 1 GPU
               capabilities: [gpu]
     command: >
-      vllm serve Qwen/Qwen2.5-3B-Instruct-AWQ
+      Qwen/Qwen2.5-3B-Instruct-AWQ
         --served-model-name llama3-local
         --port 8001
         --host 0.0.0.0
