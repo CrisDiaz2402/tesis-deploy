@@ -1,17 +1,15 @@
-version: "3.9"
-
 networks:
   tesis-net:
     driver: bridge
 
 volumes:
-  postgres_data:     
-  qdrant_storage:     
-  redis_data:         
-  hf_models_cache:    
-  documents_local:   
-  prometheus_data:    
-  grafana_data:        
+  postgres_data:
+  qdrant_storage:
+  redis_data:
+  hf_models_cache:
+  documents_local:
+  prometheus_data:
+  grafana_data:
 
 services:
 
@@ -21,15 +19,15 @@ services:
     restart: unless-stopped
     networks: [tesis-net]
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-24032002Cd}
-      POSTGRES_DB: ${POSTGRES_DB:-db_tesis_cc}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5433:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -40,8 +38,8 @@ services:
     restart: unless-stopped
     networks: [tesis-net]
     ports:
-      - "6334:6333"   # REST API
-      - "6335:6334"   # gRPC
+      - "6334:6333"
+      - "6335:6334"
     volumes:
       - qdrant_storage:/qdrant/storage
     environment:
@@ -73,7 +71,7 @@ services:
     volumes:
       - hf_models_cache:/root/.cache/huggingface
     environment:
-      TRANSFORMERS_OFFLINE: "0" 
+      TRANSFORMERS_OFFLINE: "0"
       HF_DATASETS_OFFLINE: "0"
       PYTORCH_ALLOC_CONF: "expandable_segments:True"
     deploy:
@@ -81,7 +79,7 @@ services:
         reservations:
           devices:
             - driver: nvidia
-              count: 1              # Usar 1 GPU
+              count: 1
               capabilities: [gpu]
     command: >
       Qwen/Qwen2.5-3B-Instruct-AWQ
@@ -89,9 +87,11 @@ services:
         --port 8001
         --host 0.0.0.0
         --quantization awq
-        --max-model-len 4096
+        --max-model-len 2048
         --gpu-memory-utilization 0.90
-        --enforce-eager
+        --max-num-seqs 4
+        --max-num-batched-tokens 2048
+        --enable-prefix-caching
 
   backend:
     build:
@@ -125,12 +125,12 @@ services:
       context: ./Proyecto-tesis-Frontend
       dockerfile: Dockerfile.frontend
       args:
-        VITE_BACKEND_URL: ${VITE_BACKEND_URL:-http://localhost:8000}
+        VITE_BACKEND_URL: ${VITE_BACKEND_URL}
     container_name: tesis-frontend
     restart: unless-stopped
     networks: [tesis-net]
     ports:
-      - "5173:80"   
+      - "5173:80"
     depends_on:
       - backend
 
@@ -157,7 +157,7 @@ services:
     volumes:
       - grafana_data:/var/lib/grafana
     environment:
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
       GF_USERS_ALLOW_SIGN_UP: "false"
     depends_on:
       - prometheus
