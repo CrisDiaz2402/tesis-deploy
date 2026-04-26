@@ -1,5 +1,11 @@
 .env
+.env.*
 Proyecto-tesis-backend/
 Proyecto-tesis-Frontend/
+certs/
+*.pem
+*.key
+*.crt
+*.csr
 *.pyc
 __pycache__/

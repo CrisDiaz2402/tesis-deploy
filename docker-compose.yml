@@ -119,12 +119,13 @@ services:
     build:
       context: ./Proyecto-tesis-Frontend
       dockerfile: Dockerfile.frontend
-      args:
-        VITE_BACKEND_URL: ${VITE_BACKEND_URL}
     container_name: tesis-frontend
     restart: unless-stopped
     networks: [tesis-net]
     ports:
-      - "5173:80"
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./certs:/etc/nginx/certs:ro
     depends_on:
       - backend
